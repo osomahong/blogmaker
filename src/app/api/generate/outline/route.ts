@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOutlinerSystemPrompt } from '@/lib/prompts/writer';
 import { BlogContext } from '@/types/blog';
@@ -20,14 +20,33 @@ export async function POST(request: NextRequest) {
         const systemPrompt = getOutlinerSystemPrompt(context);
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash-exp',
             systemInstruction: systemPrompt,
             generationConfig: {
                 temperature: 0.7,
-                topP: 0.9,
+                topP: 0.95,
                 topK: 40,
-                maxOutputTokens: 4096, // Increased to prevent truncation
+                maxOutputTokens: 4096,
+                candidateCount: 1,
             },
+            safetySettings: [
+                {
+                    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+            ],
         });
 
         console.log('Generating outline...');

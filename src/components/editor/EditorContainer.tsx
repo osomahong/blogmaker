@@ -8,10 +8,11 @@ import { OutlinePanel } from './OutlinePanel';
 import { ContentEditor } from './ContentEditor';
 import { ExportButtons } from './ExportButtons';
 import { TextSelectionToolbar } from './TextSelectionToolbar';
-import { Loader2, RefreshCw, ArrowLeft, AlignLeft, AlignCenter, AlignRight, WrapText, Undo, Redo, ShieldCheck, Menu, X } from 'lucide-react';
+import { Loader2, RefreshCw, ArrowLeft, AlignLeft, AlignCenter, AlignRight, WrapText, Undo, Redo, ShieldCheck, Menu, X, Sparkles } from 'lucide-react';
 import { SectionOutline } from '@/types/blog';
 import { GenerationStatus } from './GenerationStatus';
 import { FactCheckDialog } from './FactCheckDialog';
+import { ImproveDialog } from './ImproveDialog';
 
 interface EditorContainerProps {
     onBack: () => void;
@@ -56,6 +57,11 @@ export function EditorContainer({ onBack }: EditorContainerProps) {
     const [factCheckIssues, setFactCheckIssues] = useState<FactCheckIssue[]>([]);
     const [factCheckSummary, setFactCheckSummary] = useState('');
     const [applySuggestionFeedback, setApplySuggestionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+    
+    // Improve state
+    const [showImprove, setShowImprove] = useState(false);
+    const [isImproving, setIsImproving] = useState(false);
+    const [improvedSections, setImprovedSections] = useState<Array<{ heading: string; content: string; changes: string }> | null>(null);
     
     // Unified text selection state
     const [selectedText, setSelectedText] = useState('');
@@ -410,6 +416,67 @@ export function EditorContainer({ onBack }: EditorContainerProps) {
     const handleCheckSection = useCallback((sectionId: number) => {
         handleFactCheck(sectionId);
     }, [handleFactCheck]);
+
+    // Improve content
+    const handleImprove = useCallback(async (instruction?: string) => {
+        if (!hasContent) return;
+
+        setIsImproving(true);
+        setImprovedSections(null);
+
+        try {
+            const sections = post.sections
+                .filter(s => s.content)
+                .map((section) => {
+                    const outline = post.outline.find(o => o.id === section.sectionId);
+                    return {
+                        heading: outline?.heading || '',
+                        content: section.content,
+                    };
+                });
+
+            const response = await fetch('/api/edit/improve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: post.title,
+                    sections,
+                    instruction,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                console.error('Improve API error:', errorData);
+                throw new Error(errorData.error || 'Failed to improve content');
+            }
+
+            const data = await response.json();
+            
+            // Track token usage
+            if (data.tokenUsage) {
+                addTokenUsage(data.tokenUsage.promptTokens, data.tokenUsage.responseTokens);
+            }
+            
+            setImprovedSections(data.sections || []);
+        } catch (error) {
+            console.error('Improve error:', error);
+            setImprovedSections(null);
+        } finally {
+            setIsImproving(false);
+        }
+    }, [hasContent, post.sections, post.outline, post.title, addTokenUsage]);
+
+    const handleApplyImprovement = useCallback((sections: Array<{ heading: string; content: string; changes: string }>) => {
+        saveToHistory();
+        
+        sections.forEach((improvedSection) => {
+            const outline = post.outline.find(o => o.heading === improvedSection.heading);
+            if (outline) {
+                setSectionContent(outline.id, improvedSection.content);
+            }
+        });
+    }, [post.outline, setSectionContent, saveToHistory]);
 
     // Helper function for fuzzy text matching
     const findTextInContent = useCallback((content: string, searchText: string): { found: boolean; match?: string } => {
@@ -971,29 +1038,43 @@ const handleApplySuggestion = useCallback(async (claim: string, suggestion: stri
                             </Button>
                         )}
                         {hasContent && (
-                            <Button 
-                                variant="outline" 
-                                onClick={() => {
-                                    if (factCheckIssues.length > 0 || factCheckSummary) {
-                                        // Show existing results
-                                        setShowFactCheck(true);
-                                    } else {
-                                        // Run new fact-check
-                                        handleFactCheck();
-                                    }
-                                }}
-                                disabled={isFactChecking}
-                            >
-                                {isFactChecking ? (
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                    <ShieldCheck className="h-4 w-4 mr-2" />
-                                )}
-                                팩트체크
-                                {(factCheckIssues.length > 0 || factCheckSummary) && !isFactChecking && (
-                                    <span className="ml-1 text-xs">({factCheckIssues.length})</span>
-                                )}
-                            </Button>
+                            <>
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => setShowImprove(true)}
+                                    disabled={isImproving}
+                                >
+                                    {isImproving ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <Sparkles className="h-4 w-4 mr-2" />
+                                    )}
+                                    AI 개선
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => {
+                                        if (factCheckIssues.length > 0 || factCheckSummary) {
+                                            // Show existing results
+                                            setShowFactCheck(true);
+                                        } else {
+                                            // Run new fact-check
+                                            handleFactCheck();
+                                        }
+                                    }}
+                                    disabled={isFactChecking}
+                                >
+                                    {isFactChecking ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <ShieldCheck className="h-4 w-4 mr-2" />
+                                    )}
+                                    팩트체크
+                                    {(factCheckIssues.length > 0 || factCheckSummary) && !isFactChecking && (
+                                        <span className="ml-1 text-xs">({factCheckIssues.length})</span>
+                                    )}
+                                </Button>
+                            </>
                         )}
                     </div>
                 )}
@@ -1108,6 +1189,16 @@ const handleApplySuggestion = useCallback(async (claim: string, suggestion: stri
                 onDirectEdit={handleDirectEdit}
                 onDelete={handleDelete}
                 onClose={handleCloseToolbar}
+            />
+
+            {/* Improve Dialog */}
+            <ImproveDialog
+                open={showImprove}
+                onOpenChange={setShowImprove}
+                onApply={handleApplyImprovement}
+                isLoading={isImproving}
+                onImprove={handleImprove}
+                improvedSections={improvedSections}
             />
 
             {/* Fact-Check Dialog */}

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { NextRequest } from 'next/server';
 import { getWriterSystemPrompt } from '@/lib/prompts/writer';
 import { BlogContext, SectionOutline } from '@/types/blog';
@@ -24,14 +24,33 @@ export async function POST(request: NextRequest) {
         const systemPrompt = getWriterSystemPrompt(context, currentSection, previousSectionSummary);
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash-exp',
             systemInstruction: systemPrompt,
             generationConfig: {
                 temperature: 0.8,
-                topP: 0.9,
+                topP: 0.95,
                 topK: 40,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 4096, // Increased for longer content
+                candidateCount: 1,
             },
+            safetySettings: [
+                {
+                    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+            ],
         });
 
         const prompt = `이 섹션의 본문을 작성해주세요.
@@ -40,7 +59,11 @@ export async function POST(request: NextRequest) {
 1. 실제 블로그 글의 구조와 스타일을 참고하세요
 2. 자연스러운 문장 흐름과 표현을 사용하세요
 3. 사용자가 제공한 경험을 중심으로 작성하세요
-4. 구체적이고 생생한 표현을 사용하세요`;
+4. 구체적이고 생생한 표현을 사용하세요
+5. 500-800자 분량으로 충분히 작성하세요
+6. 문장을 중간에 끊지 말고 완전하게 마무리하세요
+
+반드시 완성된 문장으로 끝내주세요.`;
 
         const result = await model.generateContentStream(prompt);
 
@@ -58,7 +81,26 @@ export async function POST(request: NextRequest) {
                 try {
                     console.log(`🚀 Starting section generation: ${currentSection.heading}`);
                     
+                    let lastFinishReason = null;
+                    
                     for await (const chunk of result.stream) {
+                        // Check finish reason
+                        if (chunk.candidates && chunk.candidates[0]) {
+                            const candidate = chunk.candidates[0];
+                            if (candidate.finishReason) {
+                                lastFinishReason = candidate.finishReason;
+                                console.log(`🏁 Finish reason: ${lastFinishReason}`);
+                            }
+                            
+                            // Check for safety blocks
+                            if (candidate.safetyRatings) {
+                                const highProbability = candidate.safetyRatings.find(r => r.probability === 'HIGH');
+                                if (highProbability) {
+                                    console.warn('⚠️ High probability safety rating:', highProbability);
+                                }
+                            }
+                        }
+                        
                         const text = chunk.text();
                         if (text) {
                             chunkCount++;
@@ -79,6 +121,15 @@ export async function POST(request: NextRequest) {
                         }
                     }
                     
+                    // Check if generation was incomplete
+                    if (lastFinishReason && lastFinishReason !== 'STOP' && lastFinishReason !== 'MAX_TOKENS') {
+                        console.warn(`⚠️ Generation ended with reason: ${lastFinishReason}`);
+                        if (lastFinishReason === 'SAFETY') {
+                            const warningMsg = '\n\n[일부 내용이 안전 필터에 의해 제한되었을 수 있습니다]';
+                            controller.enqueue(encoder.encode(warningMsg));
+                        }
+                    }
+                    
                     // Log final token usage
                     console.log('📊 Section generation completed:', {
                         section: currentSection.heading,
@@ -87,10 +138,11 @@ export async function POST(request: NextRequest) {
                         promptTokens,
                         responseTokens,
                         totalTokens,
+                        finishReason: lastFinishReason,
                     });
                     
-                    // Verify we got meaningful content
-                    if (totalChars < 50) {
+                    // Verify we got meaningful content (reduced threshold)
+                    if (totalChars < 30) {
                         console.error('⚠️ Generated content too short:', totalChars);
                         throw new Error('Generated content too short');
                     }
