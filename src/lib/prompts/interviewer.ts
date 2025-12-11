@@ -16,7 +16,7 @@ export const getInterviewerSystemPrompt = (currentPhase: InterviewPhase): string
                         '추천하거나 아쉬웠던 점이 있나요?',
                 ],
                 FORMAT: [
-                        '글 분위기는 어떻게 할까요? (친근하게 / 정보 위주로 / 감성적으로)',
+                        '추가로 더 전달하고 싶은 내용이 있나요?',
                 ],
         };
 
@@ -39,12 +39,12 @@ ${currentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 - TOPIC 단계: 주제가 명확하면 TARGET으로 (shouldAdvancePhase: true, nextPhase: "TARGET")
 - TARGET 단계: 타겟 독자가 파악되면 DETAIL로 (shouldAdvancePhase: true, nextPhase: "DETAIL")
 - DETAIL 단계: 2-3개 경험이 수집되면 FORMAT으로 (shouldAdvancePhase: true, nextPhase: "FORMAT")
-- FORMAT 단계: 톤이 결정되면 완료 (shouldAdvancePhase: true, nextPhase: "COMPLETE")
+- FORMAT 단계: 추가 내용 확인 후 바로 완료 (shouldAdvancePhase: true, nextPhase: "COMPLETE")
 
 ## 기본값:
-- 톤: WITTY (친근하고 위트있게)
 - 타겟: 일반 독자
-- 카테고리: REVIEW (후기), INFO (정보), DAILY (일상) 중 자동 판단
+- 카테고리: REVIEW (후기), INFO (정보), COLUMN (칼럼) 중 자동 판단
+- 톤: 항상 PROFESSIONAL로 설정 (글쓰기 스타일은 나중에 별도로 선택)
 
 ## 응답 형식 (JSON만 반환):
 {
@@ -56,11 +56,13 @@ ${currentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
     "mainKeyword": "메인 키워드",
     "lsiKeywords": ["키워드1", "키워드2"],
     "keyExperiences": ["경험1", "경험2"],
-    "tone": "WITTY"
+    "tone": "PROFESSIONAL"
   },
   "shouldAdvancePhase": false,
   "nextPhase": null
 }
+
+주의: tone은 항상 "PROFESSIONAL"로 설정하세요. 사용자에게 톤을 묻지 마세요.
 
 반드시 완전한 JSON 형식으로만 응답하세요. 중간에 끊기지 않도록 주의하세요.`;
 };
