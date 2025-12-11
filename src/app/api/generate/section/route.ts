@@ -52,11 +52,23 @@ export async function POST(request: NextRequest) {
 
         const stream = new ReadableStream({
             async start(controller) {
+                let chunkCount = 0;
+                let totalChars = 0;
+                
                 try {
+                    console.log(`🚀 Starting section generation: ${currentSection.heading}`);
+                    
                     for await (const chunk of result.stream) {
                         const text = chunk.text();
                         if (text) {
+                            chunkCount++;
+                            totalChars += text.length;
                             controller.enqueue(encoder.encode(text));
+                            
+                            // Log progress every 10 chunks
+                            if (chunkCount % 10 === 0) {
+                                console.log(`📝 Section progress: ${chunkCount} chunks, ${totalChars} chars`);
+                            }
                         }
                         
                         // Track token usage
@@ -68,12 +80,20 @@ export async function POST(request: NextRequest) {
                     }
                     
                     // Log final token usage
-                    console.log('📊 Section token usage:', {
+                    console.log('📊 Section generation completed:', {
                         section: currentSection.heading,
+                        chunks: chunkCount,
+                        chars: totalChars,
                         promptTokens,
                         responseTokens,
                         totalTokens,
                     });
+                    
+                    // Verify we got meaningful content
+                    if (totalChars < 50) {
+                        console.error('⚠️ Generated content too short:', totalChars);
+                        throw new Error('Generated content too short');
+                    }
                     
                     // Send token usage as final message
                     const tokenUsageMessage = `\n\n__TOKEN_USAGE__:${JSON.stringify({ promptTokens, responseTokens })}`;
@@ -81,6 +101,17 @@ export async function POST(request: NextRequest) {
                     
                     controller.close();
                 } catch (error) {
+                    console.error('❌ Stream error:', error);
+                    console.error('Stream stats:', { chunkCount, totalChars });
+                    
+                    // Try to send error info to client
+                    try {
+                        const errorMsg = `\n\n[생성 중 오류 발생: ${error instanceof Error ? error.message : 'Unknown error'}]`;
+                        controller.enqueue(encoder.encode(errorMsg));
+                    } catch (e) {
+                        // Ignore if controller already closed
+                    }
+                    
                     controller.error(error);
                 }
             },

@@ -127,15 +127,23 @@ export function EditorContainer({ onBack }: EditorContainerProps) {
         }
     }, [context, setOutline]);
 
-    // Generate single section
+    // Generate single section with timeout and retry
     const generateSection = useCallback(async (
         section: SectionOutline,
-        previousSummary: string
+        previousSummary: string,
+        retryCount = 0
     ): Promise<string> => {
+        const MAX_RETRIES = 2;
+        const TIMEOUT_MS = 60000; // 60 seconds timeout
+        
         updateSectionStatus(section.id, 'generating');
         setSectionContent(section.id, '');
 
         try {
+            // Create abort controller for timeout
+            const abortController = new AbortController();
+            const timeoutId = setTimeout(() => abortController.abort(), TIMEOUT_MS);
+
             const response = await fetch('/api/generate/section', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -144,20 +152,34 @@ export function EditorContainer({ onBack }: EditorContainerProps) {
                     currentSection: section,
                     previousSectionSummary: previousSummary,
                 }),
+                signal: abortController.signal,
             });
 
-            if (!response.ok) throw new Error('Failed to generate section');
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: Failed to generate section`);
+            }
 
             const reader = response.body?.getReader();
             if (!reader) throw new Error('No response body');
 
             const decoder = new TextDecoder();
             let fullContent = '';
+            let lastChunkTime = Date.now();
+            const CHUNK_TIMEOUT = 30000; // 30 seconds between chunks
 
             while (true) {
+                // Check if too much time passed since last chunk
+                if (Date.now() - lastChunkTime > CHUNK_TIMEOUT) {
+                    reader.cancel();
+                    throw new Error('Stream timeout: no data received');
+                }
+
                 const { done, value } = await reader.read();
                 if (done) break;
 
+                lastChunkTime = Date.now();
                 const chunk = decoder.decode(value, { stream: true });
                 
                 // Check for token usage message
@@ -183,18 +205,32 @@ export function EditorContainer({ onBack }: EditorContainerProps) {
                 }
             }
 
+            // Check if we got meaningful content
+            if (fullContent.trim().length < 50) {
+                throw new Error('Generated content too short');
+            }
+
             updateSectionStatus(section.id, 'completed');
+            console.log(`✅ Section ${section.id} completed: ${fullContent.length} chars`);
 
             // Return last paragraph as summary for next section
             const paragraphs = fullContent.split('\n\n').filter(p => p.trim());
             return paragraphs.slice(-2).join(' ');
 
         } catch (err) {
-            console.error('Error generating section:', err);
+            console.error(`❌ Error generating section ${section.id} (attempt ${retryCount + 1}):`, err);
+            
+            // Retry logic
+            if (retryCount < MAX_RETRIES) {
+                console.log(`🔄 Retrying section ${section.id}... (${retryCount + 1}/${MAX_RETRIES})`);
+                await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Exponential backoff
+                return generateSection(section, previousSummary, retryCount + 1);
+            }
+            
             updateSectionStatus(section.id, 'error');
             throw err;
         }
-    }, [context, updateSectionStatus, setSectionContent, appendSectionContent]);
+    }, [context, updateSectionStatus, setSectionContent, appendSectionContent, addTokenUsage]);
 
     // Generate all sections recursively
     const generateAllSections = useCallback(async () => {
