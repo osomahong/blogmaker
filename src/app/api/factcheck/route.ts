@@ -30,10 +30,11 @@ export async function POST(request: NextRequest) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
+        // Use Pro for thorough fact-checking and analysis
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-pro',
             generationConfig: {
-                temperature: 0.3,
+                temperature: 0.3, // Low temperature for factual accuracy
                 topP: 0.9,
                 topK: 40,
                 maxOutputTokens: 4096,

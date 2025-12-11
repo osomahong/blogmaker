@@ -23,14 +23,15 @@ export async function POST(request: NextRequest) {
 
         const systemPrompt = getWriterSystemPrompt(context, currentSection, previousSectionSummary);
 
+        // Use Pro for high-quality long-form content generation
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-1.5-pro',
             systemInstruction: systemPrompt,
             generationConfig: {
                 temperature: 0.8,
                 topP: 0.95,
                 topK: 40,
-                maxOutputTokens: 4096, // Increased for longer content
+                maxOutputTokens: 8192, // Pro supports up to 8192 tokens
                 candidateCount: 1,
             },
             safetySettings: [

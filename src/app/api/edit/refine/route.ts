@@ -22,13 +22,14 @@ export async function POST(request: NextRequest) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
+        // Use flash for quick text refinement
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             generationConfig: {
                 temperature: 0.7,
                 topP: 0.9,
                 topK: 40,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 2048, // Refinement usually short
             },
         });
 

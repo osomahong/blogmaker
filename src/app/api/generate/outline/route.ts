@@ -19,14 +19,15 @@ export async function POST(request: NextRequest) {
 
         const systemPrompt = getOutlinerSystemPrompt(context);
 
+        // Use flash for structured JSON output (outline)
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-1.5-flash',
             systemInstruction: systemPrompt,
             generationConfig: {
                 temperature: 0.7,
-                topP: 0.95,
+                topP: 0.9,
                 topK: 40,
-                maxOutputTokens: 4096,
+                maxOutputTokens: 2048, // Outline doesn't need much
                 candidateCount: 1,
             },
             safetySettings: [

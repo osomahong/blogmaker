@@ -50,14 +50,15 @@ export async function POST(request: NextRequest) {
   }
 ]`;
 
+        // Use Pro for complex analysis and improvement
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-1.5-pro',
             systemInstruction: systemPrompt,
             generationConfig: {
                 temperature: 0.7,
                 topP: 0.95,
                 topK: 40,
-                maxOutputTokens: 8192,
+                maxOutputTokens: 8192, // Pro supports longer output
                 candidateCount: 1,
             },
             safetySettings: [

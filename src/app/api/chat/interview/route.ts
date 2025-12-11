@@ -98,15 +98,15 @@ export async function POST(request: NextRequest) {
 
         const systemPrompt = getInterviewerSystemPrompt(currentPhase as InterviewPhase);
 
-        // Use text generation without JSON mode for more reliable responses
+        // Use flash-8b for fast, simple interview questions
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash-8b',
             systemInstruction: systemPrompt,
             generationConfig: {
                 temperature: 0.7,
                 topP: 0.8,
                 topK: 40,
-                maxOutputTokens: 2048, // Increased for complete responses
+                maxOutputTokens: 1024, // Short questions don't need much
             },
         });
 
